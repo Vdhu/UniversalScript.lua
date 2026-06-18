@@ -1,14 +1,10 @@
 --[[
-    Universal ESP Script - УЛУЧШЕННАЯ ВЕРСИЯ v4
+    Universal ESP Script - УЛУЧШЕННАЯ ВЕРСИЯ v4 [ИСПРАВЛЕН]
     Работает во ВСЕХ Roblox играх
 
-    Изменения v4:
-    - ИСПРАВЛЕНЫ ползунки (слайдеры) ESP и Extra разделов
-    - Добавлено ТП к игрокам (список выбора)
-    - Добавлено сохранение позиции + ТП на сохранённое место
-    - Бесконечный прыжок
-    - СПИДхак (слайдер скорости)
-    - Ноуклип (проходить сквозь стены)
+    ИСПРАВЛЕНО:
+    - Ноуклип: теперь снимает CanCollide со ВСЕХ BasePart включая HumanoidRootPart
+    - Дубли ников в Teleport вкладке: секция создаётся один раз, кнопки обновляются отдельно
 
     Open Menu: RightShift
 ]]
@@ -75,7 +71,7 @@ local CheatSettings = {
     Noclip        = false,
     SpeedEnabled  = false,
     SpeedValue    = 16,
-    SavedPosition = nil,  -- CFrame для сохранённого места
+    SavedPosition = nil,
 }
 
 -- ========== PALETTE ==========
@@ -192,7 +188,6 @@ ESPTab:CreateToggle({
 
 ESPTab:CreateDivider()
 
--- ИСПРАВЛЕННЫЕ ПОЛЗУНКИ: используем правильный синтаксис Rayfield
 ESPTab:CreateSlider({
     Name = "Максимальная дистанция ESP",
     Range = {100, 3000},
@@ -233,13 +228,27 @@ ESPTab:CreateSlider({
 -- ================ TELEPORT TAB =====================
 -- ===================================================
 
+-- ИСПРАВЛЕНИЕ: секция создаётся ОДИН РАЗ здесь,
+-- RefreshPlayerButtons() добавляет ТОЛЬКО кнопки игроков без секций/заголовков
+
 TPTab:CreateSection("Телепорт к игрокам")
 
--- Кнопка обновления списка + кнопки ТП создаются динамически
+TPTab:CreateButton({
+    Name = "🔄 Обновить список игроков",
+    Callback = function()
+        RefreshPlayerButtons()
+        Rayfield:Notify({
+            Title = "Список обновлён",
+            Content = "Список игроков обновлён.",
+            Duration = 2,
+        })
+    end,
+})
+
 local tpButtonsCache = {}
 
+-- RefreshPlayerButtons создаёт ТОЛЬКО кнопки ТП, без секций
 local function RefreshPlayerButtons()
-    -- Удаляем старые кнопки
     for _, btn in pairs(tpButtonsCache) do
         pcall(function() btn:Destroy() end)
     end
@@ -279,18 +288,6 @@ local function RefreshPlayerButtons()
         table.insert(tpButtonsCache, stub)
     end
 end
-
-TPTab:CreateButton({
-    Name = "🔄 Обновить список игроков",
-    Callback = function()
-        RefreshPlayerButtons()
-        Rayfield:Notify({
-            Title = "Список обновлён",
-            Content = "Список игроков обновлён.",
-            Duration = 2,
-        })
-    end,
-})
 
 RefreshPlayerButtons()
 
@@ -358,7 +355,6 @@ TPTab:CreateButton({
 
 CheatTab:CreateSection("Движение")
 
--- БЕСКОНЕЧНЫЙ ПРЫЖОК
 CheatTab:CreateToggle({
     Name = "🐇 Бесконечный прыжок",
     CurrentValue = CheatSettings.InfiniteJump,
@@ -373,7 +369,6 @@ CheatTab:CreateToggle({
     end,
 })
 
--- СПИДхак - ВКЛЮЧАТЕЛЬ
 CheatTab:CreateToggle({
     Name = "⚡ СПИДхак (SpeedHack)",
     CurrentValue = CheatSettings.SpeedEnabled,
@@ -393,7 +388,6 @@ CheatTab:CreateToggle({
     end,
 })
 
--- СПИДхак - ПОЛЗУНОК
 CheatTab:CreateSlider({
     Name = "⚡ Скорость (WalkSpeed)",
     Range = {16, 300},
@@ -416,19 +410,21 @@ CheatTab:CreateSlider({
 CheatTab:CreateDivider()
 CheatTab:CreateSection("Коллизии")
 
--- НОУКЛИП
+-- ИСПРАВЛЕНИЕ НОУКЛИПА:
+-- Теперь CanCollide = false применяется ко ВСЕМ BasePart включая HumanoidRootPart
+-- (в оригинале HumanoidRootPart исключался, из-за чего noclip не работал)
 CheatTab:CreateToggle({
     Name = "👻 Ноуклип (Noclip)",
     CurrentValue = CheatSettings.Noclip,
     Flag = "Noclip",
     Callback = function(v)
         CheatSettings.Noclip = v
-        -- При отключении — сразу восстановить коллизии
         if not v then
+            -- При выключении — восстанавливаем CanCollide у всех частей
             local char = LP.Character
             if char then
                 for _, part in pairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                    if part:IsA("BasePart") then
                         part.CanCollide = true
                     end
                 end
@@ -453,13 +449,14 @@ UIS.JumpRequest:Connect(function()
     end
 end)
 
--- ========== NOCLIP + SPEED LOOP ==========
+-- ========== NOCLIP LOOP (ИСПРАВЛЕНО) ==========
+-- Убрано исключение HumanoidRootPart — он тоже должен быть CanCollide = false
 RunService.Stepped:Connect(function()
     if CheatSettings.Noclip then
         local char = LP.Character
         if char then
             for _, part in pairs(char:GetDescendants()) do
-                if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                if part:IsA("BasePart") then
                     part.CanCollide = false
                 end
             end
@@ -475,11 +472,11 @@ LP.CharacterAdded:Connect(function(char)
     end
 end)
 
--- ========== EXTRA TAB (ESP дополнения) ==========
+-- ========== EXTRA TAB ==========
 
 ExtraTab:CreateParagraph({
     Title = "Extra ESP опции",
-    Content = "Дополнительные параметры ESP — перенесены из старой вкладки Extra.",
+    Content = "Дополнительные параметры ESP.",
 })
 
 ExtraTab:CreateSlider({
@@ -509,8 +506,8 @@ ExtraTab:CreateSlider({
 -- ========== INFO TAB ==========
 
 InfoTab:CreateParagraph({
-    Title = "Universal ESP Script [v4]",
-    Content = "🔧 ИСПРАВЛЕНО:\n• Ползунки ESP теперь работают корректно\n\n🆕 ДОБАВЛЕНО:\n• ТП к игрокам (вкладка Teleport)\n• Сохранение места + возврат\n• Бесконечный прыжок\n• СПИДхак с ползунком\n• Ноуклип\n\n📌 ESP ФУНКЦИИ:\n• Box ESP\n• Chams/Highlight ESP\n• Skeleton ESP\n• Tracers\n• Имя, HP, Дистанция\n• Зелёный = виден, Красный = за стеной\n• Team Check\n\n⌨️ УПРАВЛЕНИЕ:\n• RightShift — открыть/закрыть меню"
+    Title = "Universal ESP Script [v4 — исправлен]",
+    Content = "🔧 ИСПРАВЛЕНО:\n• Ноуклип: CanCollide = false теперь для ВСЕХ BasePart (вкл. HumanoidRootPart)\n• Дубли ников в Teleport: секция создаётся один раз\n\n📌 ESP ФУНКЦИИ:\n• Box ESP\n• Chams/Highlight ESP\n• Skeleton ESP\n• Tracers\n• Имя, HP, Дистанция\n• Зелёный = виден, Красный = за стеной\n• Team Check\n\n⌨️ УПРАВЛЕНИЕ:\n• RightShift — открыть/закрыть меню"
 })
 
 -- ===================================================
@@ -901,5 +898,5 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("✅ Universal ESP v4 loaded | RightShift = menu")
-print("🐇 Бесконечный прыжок | ⚡ SpeedHack | 👻 Noclip | 🌀 TP")
+print("✅ Universal ESP v4 [FIXED] loaded | RightShift = menu")
+print("🐇 Бесконечный прыжок | ⚡ SpeedHack | 👻 Noclip (FIXED) | 🌀 TP")
