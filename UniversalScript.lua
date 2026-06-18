@@ -33,6 +33,7 @@ local ESPTab   = Window:CreateTab("ESP Settings", 4483362458)
 local TPTab    = Window:CreateTab("Teleport", 4483362458)
 local CheatTab = Window:CreateTab("Cheats", 4483362458)
 local ExtraTab = Window:CreateTab("Extra", 4483362458)
+local FPSTab   = Window:CreateTab("FPS Boost", 4483362458)
 local InfoTab  = Window:CreateTab("Info", 4483362458)
 
 -- ========== SERVICES ==========
@@ -503,11 +504,266 @@ ExtraTab:CreateSlider({
     end,
 })
 
+-- ===================================================
+-- ================= FPS BOOST TAB ===================
+-- ===================================================
+
+-- Сохраняем оригинальные настройки графики при первом запуске
+local Lighting = game:GetService("Lighting")
+local OriginalGraphics = {
+    QualityLevel        = settings().Rendering.QualityLevel,
+    GlobalShadows       = Lighting.GlobalShadows,
+    Brightness          = Lighting.Brightness,
+    FogEnd              = Lighting.FogEnd,
+    FogStart            = Lighting.FogStart,
+    Ambient             = Lighting.Ambient,
+    OutdoorAmbient      = Lighting.OutdoorAmbient,
+}
+
+-- Сохраняем оригинальное состояние партиклей/украшений
+local DisabledParticles = {}
+
+local function SetParticlesEnabled(state)
+    if state then
+        -- Возвращаем партиклы
+        for _, obj in pairs(DisabledParticles) do
+            pcall(function() obj.Enabled = true end)
+        end
+        DisabledParticles = {}
+    else
+        -- Отключаем все партиклы в workspace
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("ParticleEmitter") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
+                pcall(function()
+                    if obj.Enabled then
+                        obj.Enabled = false
+                        table.insert(DisabledParticles, obj)
+                    end
+                end)
+            end
+        end
+    end
+end
+
+local function SetShadowsEnabled(state)
+    pcall(function() Lighting.GlobalShadows = state end)
+end
+
+local function SetPostEffects(state)
+    for _, effect in pairs(Lighting:GetChildren()) do
+        if effect:IsA("PostEffect") then
+            pcall(function() effect.Enabled = state end)
+        end
+    end
+end
+
+local function SetDecalsTextures(state)
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Decal") or obj:IsA("Texture") or obj:IsA("SpecialMesh") then
+            pcall(function()
+                if obj:IsA("Decal") or obj:IsA("Texture") then
+                    obj.Transparency = state and 0 or 1
+                end
+            end)
+        end
+    end
+end
+
+-- Таблица пресетов графики
+-- Уровень 1 = минимум ухудшений, уровень 5 = максимум ухудшений
+local FPSPresets = {
+    [0] = { -- Возврат к дефолту
+        name = "🔄 По умолчанию",
+        qualityLevel = 0,          -- авто / оригинал
+        shadows = true,
+        postEffects = true,
+        particles = true,
+        decals = true,
+        fogEnd = nil,              -- не трогать
+        brightness = nil,
+    },
+    [1] = { -- Слабый буст
+        name = "⚡ Уровень 1 (Лёгкий)",
+        qualityLevel = 18,         -- снижаем с авто до 18 из 21
+        shadows = true,
+        postEffects = true,
+        particles = true,
+        decals = true,
+        fogEnd = nil,
+        brightness = nil,
+    },
+    [2] = { -- Средний буст
+        name = "⚡⚡ Уровень 2 (Средний)",
+        qualityLevel = 14,
+        shadows = false,           -- отключаем тени
+        postEffects = true,
+        particles = true,
+        decals = true,
+        fogEnd = nil,
+        brightness = nil,
+    },
+    [3] = { -- Заметный буст
+        name = "⚡⚡⚡ Уровень 3 (Заметный)",
+        qualityLevel = 10,
+        shadows = false,
+        postEffects = false,       -- отключаем пост-эффекты (bloom, blur и тд)
+        particles = true,
+        decals = true,
+        fogEnd = 100000,
+        brightness = nil,
+    },
+    [4] = { -- Сильный буст
+        name = "⚡⚡⚡⚡ Уровень 4 (Сильный)",
+        qualityLevel = 6,
+        shadows = false,
+        postEffects = false,
+        particles = false,         -- отключаем частицы (огонь, дым...)
+        decals = true,
+        fogEnd = 100000,
+        brightness = 0,
+    },
+    [5] = { -- Максимальный буст
+        name = "⚡⚡⚡⚡⚡ Уровень 5 (Максимум)",
+        qualityLevel = 1,          -- минимальное качество
+        shadows = false,
+        postEffects = false,
+        particles = false,
+        decals = false,            -- убираем декали и текстуры
+        fogEnd = 100000,
+        brightness = 0,
+    },
+}
+
+local CurrentFPSLevel = 0
+
+local function ApplyFPSPreset(level)
+    local preset = FPSPresets[level]
+    if not preset then return end
+    CurrentFPSLevel = level
+
+    if level == 0 then
+        -- Полный возврат к оригиналу
+        pcall(function()
+            settings().Rendering.QualityLevel = OriginalGraphics.QualityLevel
+        end)
+        SetShadowsEnabled(OriginalGraphics.GlobalShadows)
+        SetPostEffects(true)
+        SetParticlesEnabled(true)
+        pcall(function()
+            Lighting.Brightness    = OriginalGraphics.Brightness
+            Lighting.FogEnd        = OriginalGraphics.FogEnd
+            Lighting.FogStart      = OriginalGraphics.FogStart
+            Lighting.Ambient       = OriginalGraphics.Ambient
+            Lighting.OutdoorAmbient= OriginalGraphics.OutdoorAmbient
+        end)
+        -- Возвращаем прозрачность декалей
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("Decal") or obj:IsA("Texture") then
+                pcall(function() obj.Transparency = 0 end)
+            end
+        end
+    else
+        -- Применяем пресет
+        pcall(function()
+            settings().Rendering.QualityLevel = preset.qualityLevel
+        end)
+        SetShadowsEnabled(preset.shadows)
+        SetPostEffects(preset.postEffects)
+        SetParticlesEnabled(preset.particles)
+        if not preset.decals then
+            SetDecalsTextures(false)
+        else
+            for _, obj in pairs(workspace:GetDescendants()) do
+                if obj:IsA("Decal") or obj:IsA("Texture") then
+                    pcall(function() obj.Transparency = 0 end)
+                end
+            end
+        end
+        if preset.fogEnd then
+            pcall(function() Lighting.FogEnd = preset.fogEnd end)
+        end
+        if preset.brightness ~= nil then
+            pcall(function() Lighting.Brightness = preset.brightness end)
+        end
+    end
+
+    Rayfield:Notify({
+        Title = "🚀 FPS Boost",
+        Content = preset.name .. " применён!",
+        Duration = 3,
+    })
+end
+
+-- ========== UI FPS TAB ==========
+
+FPSTab:CreateSection("🚀 FPS Boost — Управление графикой")
+
+FPSTab:CreateParagraph({
+    Title = "Как это работает?",
+    Content = "Снижает качество графики Roblox для повышения FPS.\nУровень 1 = минимальное ухудшение\nУровень 5 = максимальный прирост FPS\nДефолт = полное восстановление настроек",
+})
+
+FPSTab:CreateDivider()
+FPSTab:CreateSection("Восстановление")
+
+FPSTab:CreateButton({
+    Name = "🔄 Вернуть графику по умолчанию",
+    Callback = function()
+        ApplyFPSPreset(0)
+    end,
+})
+
+FPSTab:CreateDivider()
+FPSTab:CreateSection("Режимы буста")
+
+FPSTab:CreateButton({
+    Name = "⚡ Уровень 1 — Лёгкий (снижение качества)",
+    Callback = function()
+        ApplyFPSPreset(1)
+    end,
+})
+
+FPSTab:CreateButton({
+    Name = "⚡⚡ Уровень 2 — Средний (без теней)",
+    Callback = function()
+        ApplyFPSPreset(2)
+    end,
+})
+
+FPSTab:CreateButton({
+    Name = "⚡⚡⚡ Уровень 3 — Заметный (без теней и постэффектов)",
+    Callback = function()
+        ApplyFPSPreset(3)
+    end,
+})
+
+FPSTab:CreateButton({
+    Name = "⚡⚡⚡⚡ Уровень 4 — Сильный (без партиклей)",
+    Callback = function()
+        ApplyFPSPreset(4)
+    end,
+})
+
+FPSTab:CreateButton({
+    Name = "⚡⚡⚡⚡⚡ Уровень 5 — МАКСИМУМ (всё отключено)",
+    Callback = function()
+        ApplyFPSPreset(5)
+    end,
+})
+
+FPSTab:CreateDivider()
+FPSTab:CreateSection("Что отключается на каждом уровне")
+
+FPSTab:CreateParagraph({
+    Title = "Таблица уровней",
+    Content = "Ур.1: Снижение качества рендера до 18/21\nУр.2: + Отключение теней\nУр.3: + Отключение пост-эффектов (Bloom, Blur, ColorCorrection)\nУр.4: + Отключение частиц (огонь, дым, искры) + минимальная яркость\nУр.5: + Минимальное качество (1/21) + скрытие декалей и текстур"
+})
+
 -- ========== INFO TAB ==========
 
 InfoTab:CreateParagraph({
     Title = "Universal ESP Script [v4 — исправлен]",
-    Content = "🔧 ИСПРАВЛЕНО:\n• Ноуклип: CanCollide = false теперь для ВСЕХ BasePart (вкл. HumanoidRootPart)\n• Дубли ников в Teleport: секция создаётся один раз\n\n📌 ESP ФУНКЦИИ:\n• Box ESP\n• Chams/Highlight ESP\n• Skeleton ESP\n• Tracers\n• Имя, HP, Дистанция\n• Зелёный = виден, Красный = за стеной\n• Team Check\n\n⌨️ УПРАВЛЕНИЕ:\n• RightShift — открыть/закрыть меню"
+    Content = "🔧 ИСПРАВЛЕНО:\n• Ноуклип: CanCollide = false теперь для ВСЕХ BasePart (вкл. HumanoidRootPart)\n• Дубли ников в Teleport: секция создаётся один раз\n\n🆕 ДОБАВЛЕНО:\n• FPS Boost — 5 уровней снижения графики\n• Возврат к дефолтной графике\n\n📌 ESP ФУНКЦИИ:\n• Box ESP\n• Chams/Highlight ESP\n• Skeleton ESP\n• Tracers\n• Имя, HP, Дистанция\n• Зелёный = виден, Красный = за стеной\n• Team Check\n\n⌨️ УПРАВЛЕНИЕ:\n• RightShift — открыть/закрыть меню"
 })
 
 -- ===================================================
@@ -898,5 +1154,5 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-print("✅ Universal ESP v4 [FIXED] loaded | RightShift = menu")
-print("🐇 Бесконечный прыжок | ⚡ SpeedHack | 👻 Noclip (FIXED) | 🌀 TP")
+print("✅ Universal ESP v4 [FIXED + FPS Boost] loaded | RightShift = menu")
+print("🐇 Бесконечный прыжок | ⚡ SpeedHack | 👻 Noclip (FIXED) | 🌀 TP | 🚀 FPS Boost")
